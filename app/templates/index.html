@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polymarket Backtester</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/material-ocean.min.css">
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="background-glass"></div>
+    <div id="app" class="container">
+        
+        <!-- HEADER -->
+        <header class="glass-panel">
+            <h1 class="logo-text"><span class="accent">POLY</span>BACKTEST</h1>
+            <nav id="navBar">
+                <a href="#" onclick="showView('dashboard')">Dashboard</a>
+            </nav>
+        </header>
+
+        <!-- DASHBOARD VIEW -->
+        <main id="dashboardView" class="view active">
+            <div class="hero">
+                <h2>Your Strategy Lab</h2>
+                <button class="btn primary glowing" onclick="openNewProjectModal()">+ Add Project</button>
+            </div>
+            
+            <div class="projects-grid" id="projectsGrid">
+                <!-- Projects injected here -->
+            </div>
+        </main>
+
+        <!-- PROJECT DETAIL VIEW -->
+        <main id="projectView" class="view hidden">
+            <div class="project-header glass-panel">
+                <button class="btn secondary" onclick="showView('dashboard')">← Back</button>
+                <h2 id="projectTitle">Project Title</h2>
+                <div class="project-meta">
+                    <span id="projectMarket" class="badge">Market</span>
+                    <span id="projectToken" class="badge tag">Token</span>
+                </div>
+            </div>
+
+            <div class="project-layout">
+                <!-- Left Column: Models & Backtesting -->
+                <div class="main-column">
+                    <div class="glass-panel editor-panel">
+                        <div class="panel-header">
+                            <h3>Model Code (NumPy)</h3>
+                            <div>
+                                <select id="modelTemplate" onchange="loadTemplate()">
+                                    <option value="mean_reversion">Mean Reversion</option>
+                                    <option value="sma_crossover">SMA Crossover</option>
+                                    <option value="blank">Blank</option>
+                                </select>
+                            </div>
+                        </div>
+                        <textarea id="codeEditor"></textarea>
+                        
+                        <div class="run-bar">
+                            <div class="input-group">
+                                <label>Initial Capital ($)</label>
+                                <input type="number" id="initCapital" value="100.0" step="10">
+                            </div>
+                            <div class="input-group">
+                                <label>Fetch Mode</label>
+                                <select id="fetchMode" onchange="toggleFetchMode()" style="width:100%;padding:0.5rem;border-radius:4px;border:1px solid var(--border);">
+                                    <option value="auto" selected>✨ Auto (Market Timeline)</option>
+                                    <option value="period">⏱ Last X Period</option>
+                                    <option value="recent">Recent Blocks</option>
+                                    <option value="range">Specific Block Range</option>
+                                </select>
+                            </div>
+                            <div id="autoInfoDiv" style="font-size:0.75rem;color:var(--accent);padding:0.25rem 0;">
+                                📡 Will automatically fetch trades across the full lifecycle of this market.
+                            </div>
+                            <div class="input-group hidden" id="periodDiv">
+                                <label>Period Length</label>
+                                <select id="periodSelect" onchange="togglePeriodCustom()" style="width:100%;padding:0.5rem;border-radius:4px;border:1px solid var(--border);">
+                                    <option value="1">Last 1 Hour</option>
+                                    <option value="6">Last 6 Hours</option>
+                                    <option value="24" selected>Last 24 Hours</option>
+                                    <option value="168">Last 7 Days</option>
+                                    <option value="720">Last 30 Days</option>
+                                    <option value="custom">Custom (hours)</option>
+                                </select>
+                                <input type="number" id="periodCustom" class="hidden" placeholder="Hours (e.g. 48)" style="margin-top:0.4rem;width:100%;">
+                            </div>
+                            <div class="input-group hidden" id="recentBlocksDiv">
+                                <label>Blocks to Fetch (from now)</label>
+                                <input type="number" id="blocksFetch" value="5000">
+                            </div>
+                            <div class="input-group hidden" id="rangeBlocksDiv">
+                                <label>Start Block</label>
+                                <input type="number" id="startBlock" placeholder="e.g. 55000000">
+                                <label style="margin-top:0.5rem;">End Block (Optional)</label>
+                                <input type="number" id="endBlock" placeholder="Leave blank for latest">
+                            </div>
+                            </div>
+                            <input type="text" id="attemptName" placeholder="Attempt Name" value="Experiment 1" class="neon-input">
+                            <button class="btn primary glowing-run" onclick="runBacktest()" id="runBtn">Run Backtest ⚡</button>
+                        </div>
+                        <div id="runStatus" class="status-msg hidden"></div>
+                    </div>
+
+                    <!-- Results Section -->
+                    <div class="glass-panel results-panel hidden" id="resultsSection">
+                        <h3>Backtest Results</h3>
+                        <div class="metrics-grid">
+                            <div class="metric-card">
+                                <h4>Total Return</h4>
+                                <div id="resReturn" class="val">0.00%</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Sharpe Ratio</h4>
+                                <div id="resSharpe" class="val">0.00</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Max Drawdown</h4>
+                                <div id="resDrawdown" class="val">0.00%</div>
+                            </div>
+                            <div class="metric-card">
+                                <h4>Trades Executed</h4>
+                                <div id="resTrades" class="val">0</div>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <img id="resChart" src="" alt="Equity Curve">
+                        </div>
+                        <div class="trade-log-container">
+                            <h4>Trade Log</h4>
+                            <table class="glass-table">
+                                <thead><tr><th>Step</th><th>Type</th><th>Price</th><th>Position</th><th>Equity</th></tr></thead>
+                                <tbody id="tradeLogBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: History & Comments -->
+                <div class="side-column">
+                    <div class="glass-panel">
+                        <h3>Attempts History</h3>
+                        <div id="attemptsList" class="attempts-list">
+                            <!-- Attempts injected here -->
+                        </div>
+                    </div>
+
+                    <div class="glass-panel">
+                        <h3>Comments</h3>
+                        <div id="commentsList" class="comments-list">
+                            <!-- Comments injected here -->
+                        </div>
+                        <div class="add-comment">
+                            <input type="text" id="commentAuthor" placeholder="Your Name" class="neon-input block">
+                            <textarea id="commentBody" placeholder="Add a comment..." class="neon-input block"></textarea>
+                            <button class="btn secondary block" onclick="submitComment()">Post Comment</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+    </div>
+
+    <!-- MODALS -->
+    <div id="newProjectModal" class="modal-overlay hidden">
+        <div class="modal glass-panel">
+            <h2>New Project</h2>
+            <div class="input-group">
+                <label>Project Name</label>
+                <input type="text" id="newProjName" class="neon-input block" placeholder="E.g. Presidential Election Bot">
+            </div>
+            
+            <div class="input-group">
+                <label>Search Polymarket Event/Market</label>
+                <div class="search-box">
+                    <input type="text" id="marketSearch" class="neon-input block" placeholder="Type to search...">
+                    <button class="btn secondary" onclick="searchMarket()">Search</button>
+                </div>
+                <div id="searchResults" class="search-results hidden"></div>
+            </div>
+
+            <div id="selectedMarketInfo" class="selected-market glass-panel hidden">
+                <h4 id="selMarketName"></h4>
+                <div class="input-group">
+                    <label>Select Token (Outcome) to Track</label>
+                    <select id="selMarketToken" class="neon-input block"></select>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn secondary" onclick="closeModal('newProjectModal')">Cancel</button>
+                <button class="btn primary" id="btnCreateProj" onclick="createProject()" disabled>Create</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

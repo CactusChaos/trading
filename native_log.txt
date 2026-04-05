@@ -1,0 +1,25 @@
+INFO:     Started server process [654996]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     127.0.0.1:33696 - "GET / HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33696 - "GET /static/style.css HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33700 - "GET /static/app.js HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33700 - "GET /api/projects/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33700 - "GET /favicon.ico HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55358 - "GET /api/markets/search?q=election HTTP/1.1" 200 OK
+INFO:     127.0.0.1:45008 - "GET /api/markets/nba-will-the-mavericks-beat-the-grizzlies-by-more-than-5pt5-points-in-their-december-4-matchup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55626 - "POST /api/projects/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55626 - "GET /api/projects/fbd419b5-4b5c-48d0-a083-64a7b4a804bc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56494 - "POST /api/projects/fbd419b5-4b5c-48d0-a083-64a7b4a804bc/attempts HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56494 - "POST /api/attempts/19b899de-8ebd-4269-8969-3a5fb23d9bc1/run HTTP/1.1" 400 Bad Request
+INFO:     127.0.0.1:56494 - "GET /api/projects/fbd419b5-4b5c-48d0-a083-64a7b4a804bc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43916 - "GET /api/projects/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43916 - "GET /api/projects/fbd419b5-4b5c-48d0-a083-64a7b4a804bc HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43916 - "GET /api/projects/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:43916 - "GET /api/markets/search?q=s-forces-enter-iran-by HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33222 - "GET /api/markets/search?q=s-forces-enter-iran-by HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33222 - "GET /api/markets/search?q=us-forces-enter-iran-by HTTP/1.1" 200 OK
+INFO:     127.0.0.1:33222 - "GET /api/markets/nba-will-the-mavericks-beat-the-grizzlies-by-more-than-5pt5-points-in-their-december-4-matchup HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53150 - "POST /api/projects/ HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53150 - "GET /api/projects/a79b902c-3bd5-4927-9398-aa90ce6d469d HTTP/1.1" 200 OK
