@@ -25,14 +25,34 @@ async def timestamp_to_block(ts: int) -> int:
 
 async def resolve_market_blocks(market_slug: str) -> tuple[int, int]:
     """
-    Fetch the market's start and end dates from Polymarket Gamma API
+    Fetch the event's start and end dates from Polymarket Gamma API
     and convert them to Polygon block numbers.
+
+    KEY: We use the *event-level* startDate/endDate, not the sub-market's
+    closedTime/endDate, which can be a very narrow window (e.g. 1 hour).
     Returns (start_block, end_block).
     """
+    def parse_dt(s: str) -> int:
+        """Parse various ISO date strings to Unix timestamp."""
+        s = s.strip()
+        # Normalise '+00' suffix to '+00:00' so fromisoformat handles it
+        if s.endswith("+00"):
+            s = s + ":00"
+        # Replace space separator with T
+        s = s.replace(" ", "T", 1)
+        # Normalise trailing Z
+        s = s.replace("Z", "+00:00")
+        try:
+            return int(datetime.fromisoformat(s).astimezone(timezone.utc).timestamp())
+        except ValueError as e:
+            raise ValueError(f"Could not parse date string '{s}': {e}")
+
     async with httpx.AsyncClient(timeout=15) as client:
-        # Try fetching as event first
-        resp = await client.get(f"{GAMMA_API_URL}/events", params={"slug": market_slug})
+        event = None
         market = None
+
+        # Try fetching as an event slug — events carry the full date range
+        resp = await client.get(f"{GAMMA_API_URL}/events", params={"slug": market_slug})
         if resp.status_code == 200 and resp.json():
             event = resp.json()[0]
             markets = event.get("markets", [])
@@ -48,39 +68,34 @@ async def resolve_market_blocks(market_slug: str) -> tuple[int, int]:
             resp = await client.get(f"{GAMMA_API_URL}/markets", params={"slug": market_slug})
             if resp.status_code == 200 and resp.json():
                 market = resp.json()[0]
+                # Try to grab the parent event for better date coverage
+                if market.get("events"):
+                    event = market["events"][0]
 
         if not market:
             raise ValueError(f"Could not find market '{market_slug}' on Polymarket.")
 
-        # Parse dates — prefer startDate / closedTime or endDate
-        start_str = market.get("startDate") or market.get("createdAt")
-        end_str = market.get("closedTime") or market.get("endDate")
+        # Prefer event-level dates — they span the full market lifetime.
+        # Sub-market closedTime is often very close to createdAt (narrow window).
+        if event:
+            start_str = event.get("startDate") or event.get("creationDate") or event.get("createdAt")
+            end_str = event.get("endDate") or event.get("closedTime")
+        else:
+            start_str = market.get("startDate") or market.get("createdAt")
+            end_str = market.get("endDate") or market.get("closedTime")
 
         if not start_str:
-            raise ValueError("Market has no startDate to auto-detect block range.")
-
-        def parse_dt(s: str) -> int:
-            """Parse various ISO date strings to Unix timestamp."""
-            s = s.strip()
-            for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ",
-                        "%Y-%m-%d %H:%M:%S+00", "%Y-%m-%dT%H:%M:%S.%f+00:00",
-                        "%Y-%m-%dT%H:%M:%S+00:00"):
-                try:
-                    return int(datetime.strptime(s, fmt).replace(tzinfo=timezone.utc).timestamp())
-                except ValueError:
-                    continue
-            # Last resort — fromisoformat
-            return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
+            raise ValueError("Market/event has no startDate to auto-detect block range.")
 
         start_ts = parse_dt(start_str)
         end_ts = int(datetime.now(timezone.utc).timestamp()) if not end_str else parse_dt(end_str)
 
-        logger.info(f"Resolving blocks for '{market_slug}': {start_str} → {end_str}")
+        logger.info(f"Resolving blocks for '{market_slug}': {start_str} → {end_str or 'now'}")
 
         start_block = await timestamp_to_block(start_ts)
         end_block = await timestamp_to_block(end_ts)
 
-        logger.info(f"Resolved blocks: {start_block} → {end_block}")
+        logger.info(f"Resolved blocks: {start_block} → {end_block} ({end_block - start_block:,} blocks)")
         return start_block, end_block
 
 

@@ -21,6 +21,7 @@
             <h1 class="logo-text"><span class="accent">POLY</span>BACKTEST</h1>
             <nav id="navBar">
                 <a href="#" onclick="showView('dashboard')">Dashboard</a>
+                <a href="#" onclick="showView('cache')" id="cacheNavLink">🗄️ Cache</a>
             </nav>
         </header>
 
@@ -33,6 +34,36 @@
             
             <div class="projects-grid" id="projectsGrid">
                 <!-- Projects injected here -->
+            </div>
+        </main>
+
+        <!-- CACHE MANAGER VIEW -->
+        <main id="cacheView" class="view hidden">
+            <div class="hero" style="margin-bottom:1rem;">
+                <h2>🗄️ Cache Manager</h2>
+                <div style="display:flex;gap:0.75rem;align-items:center;">
+                    <span id="cacheTotalSize" style="color:var(--accent);font-size:0.9rem;"></span>
+                    <button class="btn secondary" onclick="refreshCache()">↻ Refresh</button>
+                    <button class="btn" style="background:var(--danger);" onclick="clearAllCache()">🗑 Clear All</button>
+                </div>
+            </div>
+            <div class="glass-panel" style="overflow-x:auto;">
+                <table class="glass-table" style="width:100%;">
+                    <thead>
+                        <tr>
+                            <th>Token ID</th>
+                            <th>Block Range</th>
+                            <th>Trades</th>
+                            <th>Size</th>
+                            <th>Downloaded</th>
+                            <th>Last Used</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="cacheTableBody">
+                        <tr><td colspan="7" style="text-align:center;color:#888;">Loading...</td></tr>
+                    </tbody>
+                </table>
             </div>
         </main>
 

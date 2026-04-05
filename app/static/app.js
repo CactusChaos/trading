@@ -95,9 +95,8 @@ function showView(viewId) {
     document.getElementById(viewId + 'View').classList.remove('hidden');
     document.getElementById(viewId + 'View').classList.add('active');
     
-    if(viewId === 'dashboard') {
-        fetchProjects();
-    }
+    if(viewId === 'dashboard') fetchProjects();
+    if(viewId === 'cache') refreshCache();
 }
 
 function toggleFetchMode() {
@@ -111,6 +110,64 @@ function toggleFetchMode() {
 function togglePeriodCustom() {
     const val = document.getElementById('periodSelect').value;
     document.getElementById('periodCustom').classList.toggle('hidden', val !== 'custom');
+}
+
+// --- Cache Manager ---
+
+function fmtBytes(b) {
+    if(b < 1024) return b + ' B';
+    if(b < 1024*1024) return (b/1024).toFixed(1) + ' KB';
+    return (b/1024/1024).toFixed(2) + ' MB';
+}
+
+function fmtAge(ts) {
+    const secs = Math.floor(Date.now()/1000 - ts);
+    if(secs < 60) return secs + 's ago';
+    if(secs < 3600) return Math.floor(secs/60) + 'm ago';
+    if(secs < 86400) return Math.floor(secs/3600) + 'h ago';
+    return Math.floor(secs/86400) + 'd ago';
+}
+
+async function refreshCache() {
+    const tbody = document.getElementById('cacheTableBody');
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">Loading...</td></tr>';
+    const res = await fetch('/api/cache/');
+    const data = await res.json();
+    
+    document.getElementById('cacheTotalSize').innerText =
+        `${data.count} entries · ${data.total_size_mb} MB total`;
+    
+    tbody.innerHTML = '';
+    if(data.entries.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#888;">No cached downloads yet.</td></tr>';
+        return;
+    }
+    data.entries.forEach(e => {
+        const sb = e.start_block ? `${e.start_block}` : 'latest';
+        const eb = e.end_block ? `${e.end_block}` : (e.blocks ? `−${e.blocks}blks` : '?');
+        const range = e.start_block ? `${sb} → ${eb}` : eb;
+        tbody.innerHTML += `<tr>
+            <td style="font-family:monospace;font-size:0.75rem;">${e.token_id.substring(0,12)}…</td>
+            <td style="font-size:0.8rem;">${range}</td>
+            <td>${e.row_count.toLocaleString()}</td>
+            <td>${fmtBytes(e.file_size_bytes)}</td>
+            <td>${fmtAge(e.created_at)}</td>
+            <td>${fmtAge(e.last_accessed)}</td>
+            <td><button class="btn" style="padding:0.2rem 0.6rem;font-size:0.75rem;background:var(--danger);" onclick="deleteCacheEntry('${e.cache_id}')">Delete</button></td>
+        </tr>`;
+    });
+}
+
+async function deleteCacheEntry(cacheId) {
+    if(!confirm('Delete this cache entry?')) return;
+    await fetch(`/api/cache/${cacheId}`, { method: 'DELETE' });
+    refreshCache();
+}
+
+async function clearAllCache() {
+    if(!confirm('Clear ALL cached downloads? This cannot be undone.')) return;
+    await fetch('/api/cache/', { method: 'DELETE' });
+    refreshCache();
 }
 
 // --- API Calls & UI Updates ---

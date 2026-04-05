@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 import os
 
 from app.database import engine, Base
-from app.routers import projects, attempts, comments, markets
+from app.routers import projects, attempts, comments, markets, cache
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,6 +28,7 @@ app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
 app.include_router(attempts.router, prefix="/api", tags=["attempts"])
 app.include_router(comments.router, prefix="/api", tags=["comments"])
 app.include_router(markets.router, prefix="/api/markets", tags=["markets"])
+app.include_router(cache.router, prefix="/api/cache", tags=["cache"])
 
 # Templates
 templates_dir = os.path.join(os.path.dirname(__file__), "templates")
