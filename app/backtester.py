@@ -22,7 +22,7 @@ class Backtester:
     
     def fetch_data(self, token_id: str, blocks: int = 5000, start_block: int = None, end_block: int = None, progress_callback=None):
         # --- Cache check ---
-        cached_path = get_cached_file(token_id, start_block, end_block, blocks if start_block is None else None)
+        cached_path = get_cached_file(start_block, end_block, blocks if start_block is None else None)
         if cached_path:
             return self._parse_csv(cached_path, token_id)
 
@@ -36,11 +36,11 @@ class Backtester:
                 cmd.extend(["--end", str(end_block)])
             if start_block is None and end_block is None:
                 cmd.extend(["-b", str(blocks)])
-            cmd.extend(["-o", csv_filename, "--rps", "40"])
+            cmd.extend(["-o", csv_filename, "--max-rps", "150"])
 
             # Inject stable Polygon RPC endpoints
             run_env = os.environ.copy()
-            run_env["POLYGON_RPC_URL"] = "https://polygon.drpc.org"
+            run_env["POLYGON_RPC_URL"] = "https://polygon.drpc.org,https://polygon-bor-rpc.publicnode.com"
             run_env["POLYGON_WSS_URL"] = "wss://polygon.drpc.org"
 
             import logging
@@ -138,6 +138,7 @@ class Backtester:
         return signals
 
     def run_backtest(self, prices: np.ndarray, signals: np.ndarray, progress_callback=None):
+        import logging
         # Simple backtest loop covering fees
         capital = self.initial_capital
         position_shares = 0.0
@@ -196,7 +197,6 @@ class Backtester:
             # Log backtest percentage progress periodically
             if len(prices) > 1000 and i > 0 and i % (len(prices) // 10) == 0:
                 pct = (i / len(prices)) * 100
-                import logging
                 logging.getLogger(__name__).info(f"Backtesting execution: {pct:.1f}%")
                 if progress_callback:
                     progress_callback(pct, "Running simulation...")

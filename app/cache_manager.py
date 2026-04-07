@@ -30,9 +30,9 @@ class CacheEntry:
     row_count: int               # number of trades in file
 
 
-def _make_cache_id(token_id: str, start_block: Optional[int], end_block: Optional[int], blocks: Optional[int]) -> str:
-    """Create a stable cache key from fetch parameters."""
-    key = f"{token_id}:{start_block}:{end_block}:{blocks}"
+def _make_cache_id(start_block: Optional[int], end_block: Optional[int], blocks: Optional[int]) -> str:
+    """Create a stable cache key from fetch parameters, agnostic of token."""
+    key = f"{start_block}:{end_block}:{blocks}"
     return hashlib.sha256(key.encode()).hexdigest()[:16]
 
 
@@ -51,12 +51,12 @@ def _save_index(index: dict[str, dict]) -> None:
         json.dump(index, f, indent=2)
 
 
-def get_cached_file(token_id: str, start_block: Optional[int], end_block: Optional[int], blocks: Optional[int]) -> Optional[str]:
+def get_cached_file(start_block: Optional[int], end_block: Optional[int], blocks: Optional[int]) -> Optional[str]:
     """
     Returns the path to a cached CSV file if it exists, otherwise None.
     Updates last_accessed timestamp on hit.
     """
-    cache_id = _make_cache_id(token_id, start_block, end_block, blocks)
+    cache_id = _make_cache_id(start_block, end_block, blocks)
     index = _load_index()
     entry_data = index.get(cache_id)
     if not entry_data:
@@ -87,7 +87,7 @@ def store_in_cache(
     Copy a downloaded CSV into the cache directory and record it in the index.
     Returns the cached file path.
     """
-    cache_id = _make_cache_id(token_id, start_block, end_block, blocks)
+    cache_id = _make_cache_id(start_block, end_block, blocks)
     cached_path = os.path.join(CACHE_DIR, f"{cache_id}.csv")
 
     shutil.copy2(source_csv, cached_path)

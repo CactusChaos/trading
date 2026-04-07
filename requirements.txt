@@ -9,4 +9,4 @@ jinja2
 python-multipart
 pydantic
 python-dotenv
-git+https://github.com/martkir/poly-trade-scan.git
+./poly-trade-scan

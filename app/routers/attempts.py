@@ -208,31 +208,52 @@ async def _run_backtest_task(attempt_id: str, payload: RunAttemptRequest, projec
             all_results = []
             chart_base64 = ""
             
-            for tid in tokens_to_run:
+            last_error = None
+            chart_base64 = ""
+            
+            if tokens_to_run:
                 try:
-                    # Wrap synchronous fetch_data in to_thread so it does not block the async event loop
-                    data = await asyncio.to_thread(
+                    update_progress(15.0, "Synchronizing block chunks...")
+                    await asyncio.to_thread(
                         bt.fetch_data,
-                        tid,
+                        tokens_to_run[0],
                         blocks,
                         start_block,
                         end_block,
                         progress_callback=update_progress
                     )
-                    if len(data["prices"]) == 0:
-                        continue
+                except Exception:
+                    pass  # Gather catches this
+            
+            update_progress(90.0, "Running execution backtester models in parallel...")
+
+            async def run_token(tid):
+                data = await asyncio.to_thread(
+                    bt.fetch_data, tid, blocks, start_block, end_block
+                )
+                if len(data["prices"]) == 0:
+                    return None
                     
-                    update_progress(100.0, f"Simulating logic for outcome {tid[:4]}...")
-                    signals = await asyncio.to_thread(bt.execute_model, attempt.model_code, data["prices"], data["volumes"])
-                    res = await asyncio.to_thread(bt.run_backtest, data["prices"], signals, progress_callback=update_progress)
-                    res["token_id"] = tid
+                signals = await asyncio.to_thread(bt.execute_model, attempt.model_code, data["prices"], data["volumes"])
+                res = await asyncio.to_thread(bt.run_backtest, data["prices"], signals)
+                res["token_id"] = tid
+                return (res, data["prices"], data["timestamps"])
+                
+            task_results = await asyncio.gather(*(run_token(tid) for tid in tokens_to_run), return_exceptions=True)
+            
+            for tid, result in zip(tokens_to_run, task_results):
+                if isinstance(result, Exception):
+                    logger.error(f"Error running token {tid}: {result}")
+                    last_error = result
+                elif result is not None:
+                    res, prices, timestamps = result
                     if not chart_base64:
-                        chart_base64 = bt.generate_chart(data["prices"], res["equity_curve"], data["timestamps"])
+                        chart_base64 = bt.generate_chart(prices, res["equity_curve"], timestamps)
                     all_results.append(res)
-                except Exception as e:
-                    logger.error(f"Error running token {tid}: {e}")
 
             if not all_results:
+                if last_error:
+                    raise RuntimeError(f"Backtester execution failed: {last_error}")
                 hint = f"Blocks {start_block}→{end_block}" if start_block else f"last {blocks} blocks"
                 raise ValueError(f"No trades found in {hint}. Try a different time range.")
 

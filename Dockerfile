@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y git gcc g++ python3-dev build-essential
 WORKDIR /app
 
 # Install dependencies
+COPY poly-trade-scan/ ./poly-trade-scan/
 COPY requirements.txt .
 RUN pip install --no-cache-dir uv
 RUN uv pip install --system -r requirements.txt
