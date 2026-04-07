@@ -20,7 +20,7 @@ class Backtester:
         self.initial_capital = initial_capital
         self.fee_rate = fee_rate # 0.5% assumed fee for realism requested by user
     
-    def fetch_data(self, token_id: str, blocks: int = 5000, start_block: int = None, end_block: int = None):
+    def fetch_data(self, token_id: str, blocks: int = 5000, start_block: int = None, end_block: int = None, progress_callback=None):
         # --- Cache check ---
         cached_path = get_cached_file(token_id, start_block, end_block, blocks if start_block is None else None)
         if cached_path:
@@ -36,37 +36,63 @@ class Backtester:
                 cmd.extend(["--end", str(end_block)])
             if start_block is None and end_block is None:
                 cmd.extend(["-b", str(blocks)])
-            cmd.extend(["-o", csv_filename])
+            cmd.extend(["-o", csv_filename, "--rps", "40"])
 
             # Inject stable Polygon RPC endpoints
             run_env = os.environ.copy()
             run_env["POLYGON_RPC_URL"] = "https://polygon.drpc.org"
             run_env["POLYGON_WSS_URL"] = "wss://polygon.drpc.org"
 
+            import logging
+            logger = logging.getLogger(__name__)
+
             # Run poly with a hard 10-minute timeout.
-            # If the RPC endpoint hangs, subprocess.TimeoutExpired is raised
-            # and caught below to return a cleaner message.
-            subprocess.run(
-                cmd, env=run_env, check=True,
-                capture_output=True, text=True, timeout=600
+            # Using Popen to stream progress and calculate download percentage
+            process = subprocess.Popen(
+                cmd, env=run_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, bufsize=1
             )
+            
+            output_lines = []
+            try:
+                for line in process.stdout:
+                    output_lines.append(line)
+                    # Check for progress: INFO     src.downloader: Progress | blocks=10/36
+                    if "blocks=" in line and "/" in line:
+                        try:
+                            # Extract blocks part, e.g. 'blocks=10/36'
+                            blocks_str = [p for p in line.split() if p.startswith("blocks=")][0]
+                            nums = blocks_str.replace("blocks=", "").split("/")
+                            if len(nums) == 2 and int(nums[1]) > 0:
+                                pct = (int(nums[0]) / int(nums[1])) * 100
+                                logger.info(f"Downloading trades: {pct:.1f}%")
+                                if progress_callback:
+                                    progress_callback(pct, "Downloading trades...")
+                        except Exception:
+                            pass
+                
+                process.wait(timeout=600)
+                if process.returncode != 0:
+                    err_output = "".join(output_lines)
+                    raise subprocess.CalledProcessError(process.returncode, cmd, output=err_output)
+                
+                # --- Parse, store in cache, clean up temp file ---
+                result = self._parse_csv(csv_filename, token_id)
+                store_in_cache(
+                    token_id=token_id,
+                    start_block=start_block,
+                    end_block=end_block,
+                    blocks=blocks if start_block is None else None,
+                    source_csv=csv_filename,
+                    row_count=len(result["prices"]),
+                )
+                return result
 
-            # --- Parse, store in cache, clean up temp file ---
-            result = self._parse_csv(csv_filename, token_id)
-            store_in_cache(
-                token_id=token_id,
-                start_block=start_block,
-                end_block=end_block,
-                blocks=blocks if start_block is None else None,
-                source_csv=csv_filename,
-                row_count=len(result["prices"]),
-            )
-            return result
-
-        except subprocess.TimeoutExpired as e:
-            raise RuntimeError(f"poly-trade-scan timed out after {e.timeout} seconds. The RPC endpoint might be slow or congested.")
-        except subprocess.CalledProcessError as e:
-            raise RuntimeError(f"poly-trade-scan failed: {e.stderr}")
+            except subprocess.TimeoutExpired as e:
+                process.kill()
+                raise RuntimeError(f"poly-trade-scan timed out after {e.timeout} seconds. The RPC endpoint might be slow.")
+            except subprocess.CalledProcessError as e:
+                raise RuntimeError(f"poly-trade-scan failed: {e.output}")
         finally:
             if os.path.exists(csv_filename):
                 os.remove(csv_filename)
@@ -111,7 +137,7 @@ class Backtester:
         
         return signals
 
-    def run_backtest(self, prices: np.ndarray, signals: np.ndarray):
+    def run_backtest(self, prices: np.ndarray, signals: np.ndarray, progress_callback=None):
         # Simple backtest loop covering fees
         capital = self.initial_capital
         position_shares = 0.0
@@ -166,6 +192,18 @@ class Backtester:
                     "capital": capital,
                     "position": position_shares
                 })
+            
+            # Log backtest percentage progress periodically
+            if len(prices) > 1000 and i > 0 and i % (len(prices) // 10) == 0:
+                pct = (i / len(prices)) * 100
+                import logging
+                logging.getLogger(__name__).info(f"Backtesting execution: {pct:.1f}%")
+                if progress_callback:
+                    progress_callback(pct, "Running simulation...")
+        
+        logging.getLogger(__name__).info("Backtesting execution: 100.0%")
+        if progress_callback:
+            progress_callback(100.0, "Aggregating metrics...")
         
         equity_arr = np.array(equity_curve)
         

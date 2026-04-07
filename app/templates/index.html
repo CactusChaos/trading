@@ -143,6 +143,15 @@
                             <button class="btn primary glowing-run" onclick="runBacktest()" id="runBtn">Run Backtest ⚡</button>
                         </div>
                         <div id="runStatus" class="status-msg hidden"></div>
+                        <div id="progressContainer" class="hidden" style="margin-top: 1rem; padding: 0 1rem 1rem 1rem;">
+                            <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; color: var(--accent);">
+                                <span id="progressMessage">Initializing...</span>
+                                <span id="progressPercentage">0%</span>
+                            </div>
+                            <div style="width: 100%; background: rgba(0,0,0,0.5); height: 8px; border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
+                                <div id="progressBar" style="width: 0%; height: 100%; background: var(--accent); transition: width 0.3s ease-out; box-shadow: 0 0 10px var(--accent);"></div>
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Results Section -->

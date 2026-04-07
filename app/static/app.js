@@ -251,10 +251,24 @@ async function selectMarketForProject(slug) {
     
     let tokens = [];
     let outcomes = [];
-    try {
-        tokens = JSON.parse(currentMarketData.clobTokenIds || '[]');
-        outcomes = JSON.parse(currentMarketData.outcomes || '[]');
-    } catch(e) {}
+    
+    if (currentMarketData.markets) {
+        currentMarketData.markets.forEach(m => {
+            try {
+                let mTokens = JSON.parse(m.clobTokenIds || '[]');
+                let mOutcomes = JSON.parse(m.outcomes || '[]');
+                mTokens.forEach((tk, idx) => {
+                    tokens.push(tk);
+                    outcomes.push(`${m.groupItemTitle || m.question || 'Market'} - ${mOutcomes[idx] || tk.substring(0,8)}`);
+                });
+            } catch(e) {}
+        });
+    } else {
+        try {
+            tokens = JSON.parse(currentMarketData.clobTokenIds || '[]');
+            outcomes = JSON.parse(currentMarketData.outcomes || '[]');
+        } catch(e) {}
+    }
     
     if(tokens.length > 0) {
         tokens.forEach((tk, idx) => {
@@ -315,8 +329,26 @@ async function openProject(id) {
             const mRes = await fetch(`/api/markets/${p.market_slug}`);
             if (mRes.ok) {
                 const mData = await mRes.json();
-                let tokens = JSON.parse(mData.clobTokenIds || '[]');
-                let outcomes = JSON.parse(mData.outcomes || '[]');
+                let tokens = [];
+                let outcomes = [];
+                if (mData.markets) {
+                    mData.markets.forEach(m => {
+                        try {
+                            let mTokens = JSON.parse(m.clobTokenIds || '[]');
+                            let mOutcomes = JSON.parse(m.outcomes || '[]');
+                            mTokens.forEach((tk, idx) => {
+                                tokens.push(tk);
+                                outcomes.push(`${m.groupItemTitle || m.question || 'Market'} - ${mOutcomes[idx] || tk.substring(0,8)}`);
+                            });
+                        } catch(e) {}
+                    });
+                } else {
+                    try {
+                        tokens = JSON.parse(mData.clobTokenIds || '[]');
+                        outcomes = JSON.parse(mData.outcomes || '[]');
+                    } catch(e) {}
+                }
+                
                 tokens.forEach((tk, idx) => {
                     const opt = document.createElement('option');
                     opt.value = tk;
@@ -472,19 +504,72 @@ async function runBacktest() {
         updatedAttempt = { detail: "Failed to parse server response." };
     }
     
+    if (updatedAttempt.status === 'running') {
+        statusMsg.classList.add('hidden');
+        document.getElementById('progressContainer').classList.remove('hidden');
+        btn.innerText = 'Crunching Numbers...';
+        btn.disabled = true;
+        
+        const pollInterval = setInterval(async () => {
+            try {
+                // Poll progress endpoint
+                let pRes = await fetch(`/api/attempts/${attempt.id}/progress`);
+                if (pRes.ok) {
+                    let pData = await pRes.json();
+                    document.getElementById('progressPercentage').innerText = (pData.progress || 0).toFixed(1) + '%';
+                    document.getElementById('progressBar').style.width = (pData.progress || 0) + '%';
+                    if(pData.message) document.getElementById('progressMessage').innerText = pData.message;
+                }
+                
+                // Poll attempt status
+                let aRes = await fetch(`/api/attempts/${attempt.id}`);
+                if (aRes.ok) {
+                    let aData = await aRes.json();
+                    if (aData.status === 'completed' || aData.status === 'failed') {
+                        clearInterval(pollInterval);
+                        document.getElementById('progressContainer').classList.add('hidden');
+                        
+                        btn.innerText = 'Run Backtest ⚡';
+                        btn.disabled = false;
+                        
+                        if (aData.status === 'completed') {
+                            statusMsg.innerText = "Backtest completed!";
+                            statusMsg.classList.remove('hidden');
+                            displayResults(aData.results);
+                        } else {
+                            statusMsg.innerText = "Error: " + (aData.results?.error || "Unknown error");
+                            statusMsg.classList.remove('hidden');
+                        }
+                        
+                        // Reload Project
+                        openProject(currentProjectId);
+                    }
+                }
+            } catch(e) {
+                // Ignore transient network errors during polling
+            }
+        }, 500);
+        
+        return;
+    }
+    
+    // Normal synchronous completion (fallback)
     btn.innerText = 'Run Backtest ⚡';
     btn.disabled = false;
     
     if(!res.ok) {
         statusMsg.innerText = "Error: " + (updatedAttempt.detail || "Server request failed");
+        statusMsg.classList.remove('hidden');
         return;
     }
     
     if(updatedAttempt.status === 'completed') {
         statusMsg.innerText = "Backtest completed!";
+        statusMsg.classList.remove('hidden');
         displayResults(updatedAttempt.results);
     } else {
         statusMsg.innerText = "Error: " + (updatedAttempt.results?.error || "Unknown error");
+        statusMsg.classList.remove('hidden');
     }
     
     // Reload Project to update attempts list

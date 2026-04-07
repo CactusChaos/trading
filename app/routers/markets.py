@@ -32,13 +32,6 @@ async def get_market(market_slug: str):
             data = resp.json()
             if data and isinstance(data, list) and len(data) > 0:
                 event = data[0]
-                if "markets" in event and event["markets"]:
-                    # Return the first market in the event that has CLOB tokens
-                    for m in event["markets"]:
-                        if m.get("clobTokenIds"):
-                            return m
-                    # fallback
-                    return event["markets"][0]
                 return event
         
         # Fallback to single market
