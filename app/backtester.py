@@ -40,15 +40,15 @@ class Backtester:
 
             # Inject stable Polygon RPC endpoints
             run_env = os.environ.copy()
-            run_env["POLYGON_RPC_URL"] = "https://polygon-bor-rpc.publicnode.com"
-            run_env["POLYGON_WSS_URL"] = "wss://polygon-bor-rpc.publicnode.com"
+            run_env["POLYGON_RPC_URL"] = "https://polygon.drpc.org"
+            run_env["POLYGON_WSS_URL"] = "wss://polygon.drpc.org"
 
-            # Run poly with a hard 5-minute timeout.
+            # Run poly with a hard 10-minute timeout.
             # If the RPC endpoint hangs, subprocess.TimeoutExpired is raised
-            # and caught below as a RuntimeError, unblocking the request.
+            # and caught below to return a cleaner message.
             subprocess.run(
                 cmd, env=run_env, check=True,
-                capture_output=True, text=True, timeout=300
+                capture_output=True, text=True, timeout=600
             )
 
             # --- Parse, store in cache, clean up temp file ---
@@ -63,6 +63,8 @@ class Backtester:
             )
             return result
 
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(f"poly-trade-scan timed out after {e.timeout} seconds. The RPC endpoint might be slow or congested.")
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"poly-trade-scan failed: {e.stderr}")
         finally:

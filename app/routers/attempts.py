@@ -160,28 +160,81 @@ async def run_attempt(attempt_id: str, payload: RunAttemptRequest, db: AsyncSess
             blocks = None
             logger.info(f"Period mode: {payload.period_hours}h → blocks {start_block}→{end_block}")
 
-        # 3. Run Backtester
-        bt = Backtester(initial_capital=payload.initial_capital)
-        data = bt.fetch_data(
-            token_id=project.token_id,
-            blocks=blocks,
-            start_block=start_block,
-            end_block=end_block
-        )
+        # 3. Resolve tokens to run
+        tokens_to_run = []
+        if payload.run_all_outcomes:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{GAMMA_API_URL}/markets", params={"slug": project.market_slug})
+                if resp.status_code == 200 and resp.json():
+                    import json
+                    market_data = resp.json()[0]
+                    tokens_to_run = json.loads(market_data.get("clobTokenIds", "[]"))
+            if not tokens_to_run:
+                tokens_to_run = [project.token_id]
+        elif payload.token_id:
+            tokens_to_run = [payload.token_id]
+        else:
+            tokens_to_run = [project.token_id]
+
+        # 4. Run Backtester
+        bt = Backtester(initial_capital=payload.initial_capital / len(tokens_to_run))
+        all_results = []
+        chart_base64 = ""
         
-        if len(data["prices"]) == 0:
+        for tid in tokens_to_run:
+            try:
+                data = bt.fetch_data(
+                    token_id=tid,
+                    blocks=blocks,
+                    start_block=start_block,
+                    end_block=end_block
+                )
+                if len(data["prices"]) == 0:
+                    continue
+                signals = bt.execute_model(attempt.model_code, data["prices"], data["volumes"])
+                res = bt.run_backtest(data["prices"], signals)
+                res["token_id"] = tid
+                if not chart_base64:
+                    chart_base64 = bt.generate_chart(data["prices"], res["equity_curve"], data["timestamps"])
+                all_results.append(res)
+            except Exception as e:
+                logger.error(f"Error running token {tid}: {e}")
+
+        if not all_results:
             hint = f"Blocks {start_block}→{end_block}" if start_block else f"last {blocks} blocks"
-            raise ValueError(f"No trades found for this token in {hint}. Try a different time range.")
+            raise ValueError(f"No trades found in {hint}. Try a different time range.")
+
+        # 5. Combine Results
+        if len(all_results) == 1:
+            results = all_results[0]
+            del results["token_id"]
+        else:
+            total_trades = sum(r["trades"] for r in all_results)
+            total_final_equity = sum(r["final_equity"] for r in all_results)
+            total_return = (total_final_equity - payload.initial_capital) / payload.initial_capital * 100
             
-        signals = bt.execute_model(attempt.model_code, data["prices"], data["volumes"])
-        results = bt.run_backtest(data["prices"], signals)
-        
-        # 4. Generate chart
-        chart_base64 = bt.generate_chart(data["prices"], results["equity_curve"], data["timestamps"])
+            trade_logs = []
+            for r in all_results:
+                for t in r["trade_log"]:
+                    t["type"] = f"{t['type']} ({r['token_id'][:4]})"
+                trade_logs.extend(r["trade_log"])
+            trade_logs.sort(key=lambda x: x["step"])
+
+            results = {
+                "initial_capital": payload.initial_capital,
+                "final_equity": total_final_equity,
+                "total_return_pct": total_return,
+                "max_drawdown_pct": sum(r["max_drawdown_pct"] for r in all_results) / len(all_results),
+                "sharpe_ratio": sum(r["sharpe_ratio"] for r in all_results) / len(all_results),
+                "trades": total_trades,
+                "trade_log": trade_logs
+            }
+
         results["chart_base64"] = chart_base64
         results["block_range"] = {"start": start_block, "end": end_block}
         
-        del results["equity_curve"]
+        if "equity_curve" in results:
+            del results["equity_curve"]
 
         attempt.results = results
         attempt.status = "completed"

@@ -306,7 +306,31 @@ async function openProject(id) {
     
     renderAttempts(p.attempts);
     renderComments(p.comments);
-    
+
+    // Fetch market to populate Target Token selector
+    const runTargetSelect = document.getElementById('runTargetToken');
+    if (runTargetSelect) {
+        runTargetSelect.innerHTML = '<option value="both">Run Both Outcomes (Aggregated)</option>';
+        try {
+            const mRes = await fetch(`/api/markets/${p.market_slug}`);
+            if (mRes.ok) {
+                const mData = await mRes.json();
+                let tokens = JSON.parse(mData.clobTokenIds || '[]');
+                let outcomes = JSON.parse(mData.outcomes || '[]');
+                tokens.forEach((tk, idx) => {
+                    const opt = document.createElement('option');
+                    opt.value = tk;
+                    opt.innerText = outcomes[idx] || tk.substring(0,8)+'...';
+                    if (tk === p.token_id) opt.innerText += " (Default)";
+                    runTargetSelect.appendChild(opt);
+                });
+                if (tokens.includes(p.token_id)) {
+                    runTargetSelect.value = p.token_id;
+                }
+            }
+        } catch(e) {}
+    }
+
     showView('project');
     
     // Refresh editor to fix sizing
@@ -427,7 +451,14 @@ async function runBacktest() {
         if(startB) runPayload.start_block = parseInt(startB);
         if(endB) runPayload.end_block = parseInt(endB);
     }
-    
+
+    const targetToken = document.getElementById('runTargetToken')?.value;
+    if (targetToken === 'both') {
+       runPayload.run_all_outcomes = true;
+    } else if (targetToken) {
+       runPayload.token_id = targetToken;
+    }
+
     res = await fetch(`/api/attempts/${attempt.id}/run`, {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},

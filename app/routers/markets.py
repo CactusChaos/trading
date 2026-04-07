@@ -8,19 +8,16 @@ GAMMA_API_URL = "https://gamma-api.polymarket.com"
 async def search_markets(q: str):
     async with httpx.AsyncClient() as client:
         try:
-            # Polymarket Gamma API ignores title search, so we fetch recent active events and filter server-side
-            resp = await client.get(f"{GAMMA_API_URL}/events", params={"limit": 100, "active": "true"})
+            # Polymarket Gamma API title search or slug search, we fetch recent events without active filter constraints
+            resp = await client.get(f"{GAMMA_API_URL}/public-search", params={"q": q})
             if resp.status_code == 200:
-                events = resp.json()
+                data = resp.json()
+                events = data.get("events", [])
                 filtered = []
-                q_lower = q.lower()
                 for e in events:
-                    title = e.get("title", "") or e.get("question", "")
-                    slug = e.get("slug", "")
-                    if q_lower in title.lower() or q_lower in slug.lower():
-                        # Only keep events that have at least one valid CLOB market
-                        if "markets" in e and any(m.get("clobTokenIds") for m in e["markets"]):
-                            filtered.append(e)
+                    # Only keep events that have at least one valid CLOB market
+                    if "markets" in e and any(m.get("clobTokenIds") for m in e["markets"]):
+                        filtered.append(e)
                 return filtered
             return []
         except Exception as e:

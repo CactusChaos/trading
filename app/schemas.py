@@ -36,6 +36,8 @@ class RunAttemptRequest(BaseModel):
     end_block: Optional[int] = None
     auto_range: bool = False
     period_hours: Optional[float] = None  # If set, fetch last N hours of trading
+    token_id: Optional[str] = None
+    run_all_outcomes: bool = False
 
 class Attempt(AttemptBase):
     id: str

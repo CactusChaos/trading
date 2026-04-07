@@ -133,6 +133,11 @@
                                 <label style="margin-top:0.5rem;">End Block (Optional)</label>
                                 <input type="number" id="endBlock" placeholder="Leave blank for latest">
                             </div>
+                            <div class="input-group">
+                                <label>Target Outcome</label>
+                                <select id="runTargetToken" class="neon-input" style="width:100%;padding:0.5rem;border-radius:4px;">
+                                    <!-- Populated dynamically -->
+                                </select>
                             </div>
                             <input type="text" id="attemptName" placeholder="Attempt Name" value="Experiment 1" class="neon-input">
                             <button class="btn primary glowing-run" onclick="runBacktest()" id="runBtn">Run Backtest ⚡</button>
