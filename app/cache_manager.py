@@ -56,9 +56,22 @@ def get_cached_file(start_block: Optional[int], end_block: Optional[int], blocks
     Returns the path to a cached CSV file if it exists, otherwise None.
     Updates last_accessed timestamp on hit.
     """
+    # 1. Exact match
     cache_id = _make_cache_id(start_block, end_block, blocks)
     index = _load_index()
     entry_data = index.get(cache_id)
+
+    # 2. Superset match (if explicit bounds)
+    if not entry_data and start_block is not None and end_block is not None:
+        for cid, data in index.items():
+            entry_start = data.get("start_block")
+            entry_end = data.get("end_block")
+            if entry_start is not None and entry_end is not None:
+                if entry_start <= start_block and entry_end >= end_block:
+                    entry_data = data
+                    cache_id = cid
+                    break
+
     if not entry_data:
         return None
 

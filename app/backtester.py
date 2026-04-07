@@ -21,10 +21,14 @@ class Backtester:
         self.fee_rate = fee_rate # 0.5% assumed fee for realism requested by user
     
     def fetch_data(self, token_id: str, blocks: int = 5000, start_block: int = None, end_block: int = None, progress_callback=None):
+        # Normalise: when an explicit block range is given, blocks is irrelevant and
+        # must be None so the cache key is stable across all call sites.
+        cache_blocks = None if (start_block is not None or end_block is not None) else blocks
+
         # --- Cache check ---
-        cached_path = get_cached_file(start_block, end_block, blocks if start_block is None else None)
+        cached_path = get_cached_file(start_block, end_block, cache_blocks)
         if cached_path:
-            return self._parse_csv(cached_path, token_id)
+            return self._parse_csv(cached_path, token_id, start_block, end_block)
 
         # --- Download from blockchain ---
         csv_filename = os.path.join(DATA_DIR, f"trades_{uuid.uuid4().hex}.csv")
@@ -77,12 +81,12 @@ class Backtester:
                     raise subprocess.CalledProcessError(process.returncode, cmd, output=err_output)
                 
                 # --- Parse, store in cache, clean up temp file ---
-                result = self._parse_csv(csv_filename, token_id)
+                result = self._parse_csv(csv_filename, token_id, start_block, end_block)
                 store_in_cache(
                     token_id=token_id,
                     start_block=start_block,
                     end_block=end_block,
-                    blocks=blocks if start_block is None else None,
+                    blocks=cache_blocks,
                     source_csv=csv_filename,
                     row_count=len(result["prices"]),
                 )
@@ -97,25 +101,55 @@ class Backtester:
             if os.path.exists(csv_filename):
                 os.remove(csv_filename)
 
-    def _parse_csv(self, csv_filename: str, token_id: str) -> dict:
-        """Parse a trade CSV and filter rows matching token_id."""
-        prices = []
-        volumes = []
-        timestamps = []
+    def _parse_csv(self, csv_filename: str, token_id: str, start_block: int = None, end_block: int = None) -> dict:
+        """Parse a trade CSV and filter rows matching token_id.
+
+        Deduplicates by tx_hash (each matched order emits two records —
+        one for the taker, one for the maker) and clamps prices to the
+        valid Polymarket binary-outcome range (0, 1). Optionally filters by block range
+        so that superset caches can be efficiently sliced.
+        """
+        rows = []
+        seen_txs = set()
         with open(csv_filename, 'r', encoding='utf-8') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if row['token_id'] == token_id:
-                    try:
-                        prices.append(float(row['price']))
-                        volumes.append(float(row['tokens']))
-                        timestamps.append(row['timestamp'])
-                    except (ValueError, KeyError):
+                if row.get('token_id') != token_id:
+                    continue
+                tx = row.get('tx_hash', '')
+                if tx in seen_txs:
+                    continue  # Skip duplicate maker-side record of the same fill
+                seen_txs.add(tx)
+                try:
+                    price = float(row['price'])
+                    tokens = float(row['tokens'])
+                    # Polymarket binary outcomes are always priced in (0, 1)
+                    # Values outside this are data artefacts (e.g. raw amount errors)
+                    if not (0.001 < price < 1.0):
                         continue
+                    block_num = int(row.get('block_number', 0))
+                    
+                    if start_block is not None and block_num < start_block:
+                        continue
+                    if end_block is not None and block_num > end_block:
+                        continue
+                        
+                    rows.append({
+                        'price': price,
+                        'tokens': tokens,
+                        'timestamp': row.get('timestamp', ''),
+                        'block_number': block_num,
+                    })
+                except (ValueError, KeyError):
+                    continue
+
+        # Ensure chronological order regardless of CSV append order
+        rows.sort(key=lambda r: r['block_number'])
+
         return {
-            "prices": np.array(prices, dtype=float),
-            "volumes": np.array(volumes, dtype=float),
-            "timestamps": timestamps,
+            "prices": np.array([r['price'] for r in rows], dtype=float),
+            "volumes": np.array([r['tokens'] for r in rows], dtype=float),
+            "timestamps": [r['timestamp'] for r in rows],
         }
 
     def execute_model(self, model_code: str, prices: np.ndarray, volumes: np.ndarray) -> np.ndarray:

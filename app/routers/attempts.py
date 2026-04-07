@@ -183,6 +183,10 @@ async def _run_backtest_task(attempt_id: str, payload: RunAttemptRequest, projec
                 await db.commit()
                 start_block = await timestamp_to_block(start_ts)
                 end_block = await timestamp_to_block(now_ts)
+                # Round end_block down to nearest 50 so re-runs within the same
+                # period window resolve to the same cache key
+                end_block = (end_block // 50) * 50
+                start_block = (start_block // 50) * 50
                 blocks = None
                 logger.info(f"Period mode: {payload.period_hours}h → blocks {start_block}→{end_block}")
 
@@ -211,13 +215,16 @@ async def _run_backtest_task(attempt_id: str, payload: RunAttemptRequest, projec
             last_error = None
             chart_base64 = ""
             
+            # Pre-fetch blocks (only downloads if not cached; subsequent tokens reuse cache)
+            # When start/end are explicit, pass blocks=None so the cache key matches store_in_cache
+            effective_blocks = None if (start_block is not None or end_block is not None) else blocks
             if tokens_to_run:
                 try:
                     update_progress(15.0, "Synchronizing block chunks...")
                     await asyncio.to_thread(
                         bt.fetch_data,
                         tokens_to_run[0],
-                        blocks,
+                        effective_blocks,
                         start_block,
                         end_block,
                         progress_callback=update_progress
@@ -229,7 +236,7 @@ async def _run_backtest_task(attempt_id: str, payload: RunAttemptRequest, projec
 
             async def run_token(tid):
                 data = await asyncio.to_thread(
-                    bt.fetch_data, tid, blocks, start_block, end_block
+                    bt.fetch_data, tid, effective_blocks, start_block, end_block
                 )
                 if len(data["prices"]) == 0:
                     return None
